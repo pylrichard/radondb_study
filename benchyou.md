@@ -20,7 +20,9 @@ xcmd\common.go\parseConf()
 rootCmd.AddCommand(xcmd.NewSeqCommand())
 ```
 
-## seq
+## 命令处理流程
+
+### seq
 
 xcmd\seq.go
 
@@ -55,7 +57,7 @@ func start(conf *xcommon.Conf) {
 	delete := sysbench.NewDelete(conf, dworkers)
 	workers = append(workers, dworkers...)
 
-	// 创建Monitor
+	// 创建Monitor，监控所有Worker
 	monitor := NewMonitor(conf, workers)
 
 	/*
@@ -143,6 +145,53 @@ func (v *IOS) Start() {
 			}
 		}
 	}()
+}
+```
+
+## worker
+
+### 创建Worker连接MySQL
+
+xworker\worker.go
+
+```
+func CreateWorkers(conf *xcommon.Conf, threads int) []Worker {
+	var workers []Worker
+	var conn driver.Conn
+	var err error
+
+	utf8 := "utf8"
+	dsn := fmt.Sprintf("%s:%d", conf.MysqlHost, conf.MysqlPort)
+	for i := 0; i < threads; i++ {
+		// 创建MySQL连接
+		if conn, err = driver.NewConn(conf.MysqlUser, conf.MysqlPassword, dsn, conf.MysqlDb, utf8); err != nil {
+			log.Panicf("create.worker.error:%v", err)
+		}
+		workers = append(workers, Worker{
+			S: conn,
+			M: &Metric{},
+			E: conf.MysqlTableEngine,
+			N: conf.OltpTablesCount,
+		},
+		)
+	}
+	return workers
+}
+```
+
+## sysbench
+
+### insert
+
+sysbench\insert.go
+
+```
+func (insert *Insert) Run() {
+	threads := len(insert.workers)
+	for i := 0; i < threads; i++ {
+		insert.lock.Add(1)
+		go insert.Insert(&insert.workers[i], threads, i)
+	}
 }
 ```
 
